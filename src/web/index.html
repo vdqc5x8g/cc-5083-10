@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>景深融合 · 焦点融合图像恢复台</title>
+<link rel="stylesheet" href="./style.css">
+</head>
+<body>
+<div id="app">
+  <aside class="panel slices-panel">
+    <header class="panel-head">
+      <h2>焦点组</h2>
+      <div class="head-actions">
+        <button id="load-demo" class="btn small">载入示例</button>
+        <button id="add-files" class="btn small">添加图片…</button>
+        <input id="file-input" type="file" accept="image/png" multiple hidden>
+      </div>
+    </header>
+    <p class="hint">按清晰度由近到远排列；顺序不重要，配准会自动对齐。勾选即纳入求解。</p>
+    <div id="slice-list" class="slice-list">
+      <div class="empty">尚未载入图片。点击“载入示例”或“添加图片”。</div>
+    </div>
+    <div class="panel-foot">
+      <label class="check"><input id="opt-registration" type="checkbox" checked> 相似配准</label>
+      <label class="check"><input id="opt-exposure" type="checkbox" checked> 曝光匹配（仅清晰度）</label>
+      <div class="row">
+        <label>输出位深</label>
+        <select id="opt-bitdepth">
+          <option value="16" selected>16 位</option>
+          <option value="8">8 位</option>
+        </select>
+      </div>
+      <button id="run" class="btn primary" disabled>重新计算融合</button>
+      <button id="export-fused" class="btn" disabled>导出融合图</button>
+      <button id="export-selection" class="btn" disabled>导出选择图</button>
+    </div>
+  </aside>
+
+  <main class="workspace">
+    <div class="toolbar">
+      <div class="view-tabs" role="tablist">
+        <button class="tab active" data-view="fused">融合结果</button>
+        <button class="tab" data-view="weights">权重分布</button>
+        <button class="tab" data-view="reliability">可靠度</button>
+        <button class="tab" data-view="compare">分屏对照</button>
+      </div>
+      <div class="toolbar-right">
+        <label class="check"><input id="show-rel" type="checkbox"> 叠加可靠度</label>
+        <label class="check"><input id="show-roi" type="checkbox" checked> 显示有效区</label>
+        <span id="progress" class="progress"></span>
+      </div>
+    </div>
+
+    <div class="canvas-wrap">
+      <canvas id="stage"></canvas>
+      <div id="stage-empty" class="stage-empty">
+        <h1>焦点融合图像恢复台</h1>
+        <p>载入同一场景、不同焦点位置的多张照片，工具会估计每处清晰度、生成保留遮挡边缘的选择权重、重建像素，并把全部输入都模糊的区域标记为不可靠。</p>
+        <p class="muted">图形入口即本页面；命令行 <code>node bin/focus-fusion.js</code> 仅作辅助。</p>
+      </div>
+      <div id="badge" class="badge"></div>
+    </div>
+
+    <div id="status-line" class="status-line"></div>
+  </main>
+
+  <aside class="panel result-panel">
+    <section>
+      <h2>异常提示</h2>
+      <div id="warnings" class="warnings"><div class="empty quiet">暂无</div></div>
+    </section>
+    <section>
+      <h2>融合统计</h2>
+      <dl id="stats" class="stats">
+        <div><dt>可靠</dt><dd id="st-reliable">—</dd></div>
+        <div><dt>边缘/存疑</dt><dd id="st-marginal">—</dd></div>
+        <div><dt>不可靠</dt><dd id="st-unreliable">—</dd></div>
+        <div><dt>无数据</dt><dd id="st-nodata">—</dd></div>
+        <div><dt>平均可靠度</dt><dd id="st-meanrel">—</dd></div>
+        <div><dt>选择边缘宽度</dt><dd id="st-edge">—</dd></div>
+        <div><dt>重影指数</dt><dd id="st-ghost">—</dd></div>
+        <div><dt>覆盖</dt><dd id="st-cover">—</dd></div>
+      </dl>
+    </section>
+    <section>
+      <h2>配准关系</h2>
+      <p class="hint">相似变换：平移 + 统一缩放 + 旋转。支持焦点呼吸造成的轻微缩放，不吸收透视形变。</p>
+      <div id="registration" class="registration"><div class="empty quiet">—</div></div>
+    </section>
+    <section>
+      <h2>权重分布</h2>
+      <div id="weight-legend" class="weight-legend"></div>
+      <p class="hint">“权重分布”视图按所选焦点组显示每片的归一化权重热力图；也可看主导焦点着色。</p>
+    </section>
+  </aside>
+</div>
+<script type="module" src="./main.js"></script>
+</body>
+</html>

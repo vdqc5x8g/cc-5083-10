@@ -1,0 +1,16 @@
+{
+  "name": "focus-fusion",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Depth-of-field fusion (focus stacking) tool: real sharpness weights, reliability map and 16-bit output.",
+  "scripts": {
+    "start": "node bin/serve.js",
+    "test": "node --test test/*.test.js",
+    "demo": "node bin/make-demo.js",
+    "fuse": "node bin/focus-fusion.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

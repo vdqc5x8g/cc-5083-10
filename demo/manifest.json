@@ -1,0 +1,47 @@
+{
+  "generated": "2026-11-13T16:36:15.346Z",
+  "width": 320,
+  "height": 240,
+  "scenes": [
+    {
+      "scene": "synthetic",
+      "slices": [
+        "chart-01.png",
+        "chart-02.png",
+        "chart-03.png",
+        "chart-04.png"
+      ],
+      "focuses": [
+        0.5,
+        0.62,
+        0.85,
+        1.1
+      ],
+      "bytes": 1974725
+    },
+    {
+      "scene": "stilllife",
+      "slices": [
+        "still-01.png",
+        "still-02.png",
+        "still-03.png",
+        "still-04.png",
+        "still-05.png",
+        "still-06.png",
+        "still-07.png",
+        "still-08.png"
+      ],
+      "focuses": [
+        0.26,
+        0.34,
+        0.42,
+        0.52,
+        0.62,
+        0.74,
+        0.88,
+        1
+      ],
+      "bytes": 3600321
+    }
+  ]
+}
