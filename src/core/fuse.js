@@ -654,6 +654,38 @@ function analyse(ctx) {
       message: `遮挡边缘附近滞留权重偏高（指数 ${ghosting.index.toFixed(2)}），可能产生重影`,
     });
   }
+  // Weight-distribution anomaly: an enabled slice whose effective support
+  // (source alpha ∩ registration support ∩ ROI, after border erosion) covers
+  // almost none of the frame can carry no meaningful weight budget. We gate on
+  // the eligible-pixel fraction rather than the in-region win rate: inside a
+  // tiny surviving ROI the slice still "wins" its own few pixels, which would
+  // hide the fact that it is effectively absent from the fused image.
+  const activeSlices = [];
+  for (let k = 0; k < n; k++) if (!skipMask[k]) activeSlices.push(k);
+  for (const k of activeSlices) {
+    let eligible = 0;
+    let weightSum = 0;
+    let won = 0;
+    for (let i = 0; i < N; i++) {
+      if (!veto[k][i]) continue;
+      eligible++;
+      weightSum += normWeights[k][i];
+      let isWinner = true;
+      for (const j of activeSlices) {
+        if (j !== k && normWeights[j][i] > normWeights[k][i]) { isWinner = false; break; }
+      }
+      if (isWinner) won++;
+    }
+    const coverageFraction = eligible / N;
+    const meanWeight = eligible ? weightSum / eligible : 0;
+    if (coverageFraction < 0.005) {
+      problems.push({
+        code: 'weight-collapse',
+        slice: k,
+        message: `权重分布异常：第 ${k + 1} 片有效像素仅占画面 ${(coverageFraction * 100).toFixed(2)}%（${eligible}/${N}），平均权重 ${meanWeight.toFixed(3)}，几乎未参与融合`,
+      });
+    }
+  }
   return {
     reliability: rel, relClass, fusedMeasure,
     edgeWidth: { median, p90, samples: widths.length, target: opts.edgeWidthTarget },

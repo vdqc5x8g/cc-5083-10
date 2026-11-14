@@ -6,11 +6,16 @@
   "description": "Depth-of-field fusion (focus stacking) tool: real sharpness weights, reliability map and 16-bit output.",
   "scripts": {
     "start": "node bin/serve.js",
-    "test": "node --test test/*.test.js",
+    "test": "node --test test/*.test.js packages/imageio/test/*.test.js",
     "demo": "node bin/make-demo.js",
-    "fuse": "node bin/focus-fusion.js"
+    "fuse": "node bin/focus-fusion.js",
+    "samples": "node bin/make-samples.js",
+    "check:imageio": "npm --workspace @focus-fusion/imageio run check"
   },
   "engines": {
     "node": ">=18"
-  }
+  },
+  "workspaces": [
+    "packages/*"
+  ]
 }

@@ -1,0 +1,23 @@
+{
+  "name": "@focus-fusion/imageio",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Buildable image I/O component for focus fusion: FFI v1 container (u8/u16/u32/f32, arbitrary channels) plus an explicit PNG adapter and project descriptor converter.",
+  "exports": {
+    ".": "./src/index.js",
+    "./ffi": "./src/ffi.js",
+    "./png": "./src/png-adapter.js",
+    "./project": "./src/project.js",
+    "./tensor": "./src/tensor.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "check": "node --check src/index.js && node --check src/ffi.js && node --check src/png-adapter.js && node --check src/project.js && node --check src/tensor.js && node --check src/fusion-adapter.js && node --check src/format.js"
+  },
+  "dependencies": {},
+  "devDependencies": {}
+}

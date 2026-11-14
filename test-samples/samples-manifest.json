@@ -1,0 +1,128 @@
+{
+  "generated": "1970-01-01T00:00:00.000Z",
+  "width": 24,
+  "height": 16,
+  "samples": [
+    {
+      "file": "gradient-rgba16.png",
+      "kind": "u16",
+      "channels": 4,
+      "channelOrder": [
+        "R",
+        "G",
+        "B",
+        "A"
+      ],
+      "transfer": "srgb",
+      "valueRange": {
+        "min": 0,
+        "max": 65535
+      },
+      "losses": []
+    },
+    {
+      "file": "gradient-rgba16.ffi",
+      "kind": "u16",
+      "channels": 4,
+      "channelOrder": [
+        "R",
+        "G",
+        "B",
+        "A"
+      ],
+      "transfer": "srgb",
+      "valueRange": {
+        "min": 0,
+        "max": 65535
+      },
+      "losses": []
+    },
+    {
+      "file": "gradient-rgba8.ffi",
+      "kind": "u8",
+      "channels": 4,
+      "channelOrder": [
+        "R",
+        "G",
+        "B",
+        "A"
+      ],
+      "transfer": "srgb",
+      "valueRange": {
+        "min": 0,
+        "max": 255
+      },
+      "losses": []
+    },
+    {
+      "file": "gradient-rgba32.ffi",
+      "kind": "u32",
+      "channels": 4,
+      "channelOrder": [
+        "R",
+        "G",
+        "B",
+        "A"
+      ],
+      "transfer": "srgb",
+      "valueRange": {
+        "min": 0,
+        "max": 1000000
+      },
+      "losses": []
+    },
+    {
+      "file": "linear-float-unit.ffi",
+      "kind": "f32",
+      "channels": 4,
+      "channelOrder": [
+        "R",
+        "G",
+        "B",
+        "A"
+      ],
+      "transfer": "linear",
+      "valueRange": {
+        "min": 0,
+        "max": 1
+      },
+      "losses": []
+    },
+    {
+      "file": "linear-float-hdr.ffi",
+      "kind": "f32",
+      "channels": 4,
+      "channelOrder": [
+        "R",
+        "G",
+        "B",
+        "A"
+      ],
+      "transfer": "linear",
+      "valueRange": {
+        "min": 0,
+        "max": 1
+      },
+      "losses": []
+    },
+    {
+      "file": "rgba-plus-depth.ffi",
+      "kind": "f32",
+      "channels": 6,
+      "channelOrder": [
+        "R",
+        "G",
+        "B",
+        "A",
+        "Depth",
+        "Confidence"
+      ],
+      "transfer": "linear",
+      "valueRange": {
+        "min": 0,
+        "max": 4
+      },
+      "losses": []
+    }
+  ]
+}

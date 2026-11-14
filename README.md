@@ -5,9 +5,12 @@
 **扩大清晰覆盖范围**，不反演三维深度，也**不做多图平均**。所有输入在同一位置
 都模糊时，结果如实标记为**不可靠**，不凭空补细节。
 
-- 纯 JavaScript，零依赖。核心算法（`src/core/`）在浏览器与 Node 间共享同一份代码。
-- 自带 PNG 8/16 位编解码（含灰度/RGB/RGBA/调色板、Adam7、tEXt），无需第三方库。
-- 输出默认 **16 位** PNG，保留足够位深。
+- 纯 JavaScript，零运行时依赖。核心算法（`src/core/`）在浏览器与 Node 间共享同一份代码。
+- 图像读写由可构建组件 `packages/imageio/` 统一负责：自带 PNG 8/16 位编解码
+  （含灰度/RGB/RGBA/调色板、Adam7、tEXt）与自有 **FFI v1** 容器
+  （u8/u16/u32/f32、任意通道、浮点 HDR、元信息与 CRC 校验），无需第三方库。
+- 输出默认 **16 位** PNG，保留足够位深；需要浮点/额外通道时可用 **FFI 无损导出**。
+- 不可表示的内容默认拒绝或显式记录损失，绝不静默降成八位图。
 - 无预画掩码：清晰度、权重、可靠度都是逐像素实算出来的。
 
 ## 图形入口（主要入口）
@@ -22,10 +25,11 @@ npm start                 # 等价于 node bin/serve.js
 
 打开 <http://127.0.0.1:8080/> 即进入**焦点融合图像恢复窗口**。界面分三栏：
 
-- **左栏 · 焦点组**：载入示例（合成测试图 / 自制静物序列）或“添加图片…”；
-  每张缩略图可勾选纳入求解、可点“编辑有效区”、可移除。底部可切换
-  **相似配准**、**曝光匹配（仅清晰度）**、输出位深，并触发“重新计算融合”、
-  “导出融合图”、“导出选择图”。
+- **左栏 · 焦点组**：载入示例（合成测试图 / 自制静物序列）或“添加图片…”
+  （支持 PNG 与 FFI，按文件签名识别）；每张缩略图可勾选纳入求解、可点
+  “编辑有效区”、可移除。底部可切换 **相似配准**、**曝光匹配（仅清晰度）**、
+  导出格式（PNG 16 位 / PNG 8 位有损 / FFI 浮点无损），并触发
+  “重新计算融合”、“导出融合图”、“导出选择图”。
 - **中栏 · 结果区（画布）**：四个视图——**融合结果 / 权重分布 / 可靠度 /
   分屏对照**，可叠加可靠度、显示有效区。结果区呈现的是真实融合像素与
   真实权重分布，不是占位图。
@@ -33,9 +37,9 @@ npm start                 # 等价于 node bin/serve.js
   - **分屏对照**：左半为融合结果，右半为所选输入片。
   - **可靠度**视图：红=不可靠（不补细节）、黄=边缘/存疑、灰=无数据。
 - **右栏 · 结果面板**：**异常提示**（全部输入皆模糊、重影风险、配准置信度不足、
-  尺寸不一致）、**融合统计**（可靠/边缘存疑/不可靠/无数据比例、平均可靠度、
-  选择边缘宽度、重影指数、覆盖）、**配准关系**（每片的 NCC、缩放、旋转、位移）、
-  **权重分布**图例。
+  权重分布异常、尺寸不一致）、**融合统计**（可靠/边缘存疑/不可靠/无数据比例、
+  平均可靠度、选择边缘宽度、重影指数、覆盖）、**配准关系**（每片的 NCC、缩放、
+  旋转、位移）、**权重分布**图例。融合运行期间进度条与状态行实时可见。
 
 ### 编辑有效区（ROI）并重算
 
@@ -56,7 +60,7 @@ npm start                 # 等价于 node bin/serve.js
 命令行只作批量/脚本用途，图形窗口才是主入口。
 
 ```bash
-node bin/focus-fusion.js <输出目录> <切片1.png> <切片2.png> [...]
+node bin/focus-fusion.js <输出目录> <切片1.png|切片1.ffi> <切片2.…> [...]
 ```
 
 选项：
@@ -66,10 +70,17 @@ node bin/focus-fusion.js <输出目录> <切片1.png> <切片2.png> [...]
 | `--roi k:x,y,w,h` | 限制第 k 片（按输入顺序，0 起）到归一化矩形；可重复 |
 | `--roi k:none` | 清除第 k 片的有效区限制 |
 | `--exclude k` | 从自动求解中移除第 k 片；可重复 |
-| `--bit-depth 8\|16` | 输出位深，默认 16 |
+| `--bit-depth 8\|16` | PNG 输出位深，默认 16（8 位为已确认损失，写入报告） |
+| `--format png\|ffi` | 融合输出容器；`ffi` 为 f32 线性光、真实范围与元信息的无损导出（默认 png） |
+| `--project PATH` | 导入 v2 工程描述（顺序与 ROI 以描述为准） |
+| `--write-project` | 在输出目录写出解析后的工程描述 `project.json` |
+| `--allow-loss` | 允许有损 PNG 写（浮点量化等），损失逐项进报告 |
 | `--no-registration` | 关闭相似配准 |
 | `--report-only` | 只写 `report.json`，不写图片 |
 | `--quiet` | 关闭进度与摘要输出 |
+
+读取统一走新读写器 `readImage`（按魔数分派 PNG/FFI），写出统一走
+`writeImage`；报告里的 `fusedWriteLosses` 列出所有已确认的表示损失。
 
 输出：`fused.png`（默认 16 位）、`selection.png`（主导焦点着色）、
 `reliability.png`（可靠度叠加）、`weight-k.png`（每片权重热力）、`report.json`
@@ -120,12 +131,23 @@ node bin/make-demo.js out --scene still --size 640x480
 ## 目录结构
 
 ```
+packages/imageio/ 新图像读写组件（FFI v1 容器、PNG 适配、张量契约、工程描述转换器）
+  src/format.js           签名/压缩/CRC 等底层常量
+  src/tensor.js           ImageTensor 契约、校验、量化与位深转换（显式损失）
+  src/ffi.js              FFI v1 编解码（u8/u16/u32/f32、任意通道、元信息）
+  src/png-adapter.js      旧 PNG 编解码 ↔ ImageTensor 适配层
+  src/fusion-adapter.js   ImageTensor ↔ 融合引擎 RGBA16/浮点结果
+  src/project.js          旧工程/manifest → v2 工程描述（确定性 id，保序保 ROI）
 src/core/    共享算法（png, image, filters, focus, register, fuse, synth, stilllife）
 src/web/     图形入口：index.html / style.css / main.js / fusion-worker.js
-bin/         serve.js（GUI 服务器）、focus-fusion.js（辅助 CLI）、make-demo.js
+bin/         serve.js（GUI 服务器）、focus-fusion.js（辅助 CLI）、make-demo.js、make-samples.js
 demo/        生成的示例景深序列
-test/        node:test 测试（含合成与静物真值核对）
+test-samples/ 代表性读写样例（PNG16、u8/u16/u32/f32 FFI、HDR、额外通道）
+test/        node:test 测试（含合成与静物真值核对、imageio 端到端迁移）
 ```
+
+新旧契约（高位深、浮点范围、通道顺序、元信息）的完整对照见
+[`docs/imageio-contract.md`](docs/imageio-contract.md)。
 
 浏览器内所有融合计算在 Web Worker 中执行，与 CLI/测试共用 `src/core/`；
 预览缩放后展示，导出时按所选位深重新跑完整分辨率流水线（导出的像素是实算结果，
@@ -135,11 +157,22 @@ test/        node:test 测试（含合成与静物真值核对）
 ## 测试
 
 ```bash
-npm test        # node --test test/*.test.js
+npm test        # node --test test/*.test.js packages/imageio/test/*.test.js
+npm run samples # 重新生成 test-samples/ 代表性样例
 ```
 
-共 36 项，覆盖：
+覆盖（共 69 项）：
 
+- `packages/imageio/test/imageio.test.js`：FFI 各位深/浮点精确往返、任意通道与
+  通道顺序、CRC 损坏拒绝、张量契约校验、数值范围越界/非有限值、量化与降位深损失、
+  PNG 适配（源位深、额外通道拒绝、浮点拒绝、禁止静默 8 位）、按签名分派。
+- `packages/imageio/test/project.test.js`：旧 manifest/焦点组 → v2 转换、
+  ROI 逐字保留、确定性 id、篡改 id 拒绝、失败不触碰原工程。
+- `packages/imageio/test/fusion-adapter.test.js`：多数值范围与额外通道输入的
+  逐像素语义、浮点线性→sRGB、HDR 范围声明与 FFI 往返。
+- `test/imageio-e2e.test.js`：旧 PNG 工程加载 → 融合 → FFI/PNG 导出 →
+  **重新读取与内存结果逐像素比较**（不只看扩展名）、工程顺序与 ROI 端到端保持。
+- `test/weight-warning.test.js`：权重分布异常（weight-collapse）的触发与无误报。
 - `png.test.js`：8/16 位 RGBA 精确往返、位深缩放、灰度/RGB 解码、tEXt、损坏拒绝。
 - `register.test.js`：已知相似变换（平移+缩放+旋转）复原、逆变换采样残差、平移方向。
 - `fuse.test.js`：尺寸不符拒绝、逐像素选择而非平均、清晰覆盖扩大、全模糊标不可靠、
@@ -149,7 +182,7 @@ npm test        # node --test test/*.test.js
   前后景同时清晰、缺失背景片时标不可靠、融合色彩贴主导片（无重影平均）、
   静物场景边缘宽度有界。
 - `worker.test.js`：图形入口的计算契约——结果/预览/可转移缓冲、进度消息、
-  16 位导出 PNG 真实性、尺寸错误上报、ROI 生效。
+  经新写出器导出的 16 位 PNG 真实性、尺寸错误上报、ROI 生效。
 - `server.test.js`：图形入口与图像恢复窗口可达、核心模块与示例数据可服务、
   路径穿越被拒。
 - `cli.test.js`：CLI 端到端 16 位输出、`--bit-depth 8` 与 `--report-only`、
@@ -167,6 +200,9 @@ npm test        # node --test test/*.test.js
 
 ## 依赖与运行环境
 
-- Node ≥ 18（PNG 编解码使用标准库 `CompressionStream`/`DecompressionStream`）。
+- Node ≥ 18（PNG/FFI 编解码使用标准库 `CompressionStream`/`DecompressionStream`）。
 - 浏览器需支持 Web Worker（module 型）与 `CompressionStream`（现代 Chrome/Edge/Firefox/Safari）。
-- 无 npm 依赖，无构建步骤。
+- **零运行时 npm 依赖、无构建步骤**；`packages/imageio` 以 npm workspace 登记，
+  根目录与组件目录各提交一份 `package-lock.json`（空依赖树，锁定 Node ≥ 18）。
+- 图形入口（主要）：`npm start` 后打开 <http://127.0.0.1:8080/> 的焦点融合图像恢复窗口；
+  命令行 `node bin/focus-fusion.js` 仅作批量/脚本辅助。

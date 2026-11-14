@@ -330,8 +330,8 @@ export async function decodePNG(bytes) {
     if (interlace === 0) break;
   }
   return {
-    width, height, data: out, bitDepth: 16, max: outMax, hasAlpha,
-    info: `PNG ${width}x${height} ${bitDepth}-bit colorType ${colorType}${interlace ? ' interlace' : ''}`,
+    width, height, data: out, bitDepth: 16, sourceBitDepth: bitDepth, max: outMax, hasAlpha,
+    info: `PNG ${width}x${height} ${bitDepth}-bit colorType ${header.colorType}${interlace ? ' interlace' : ''}`,
   };
 }
 

@@ -7,7 +7,7 @@
 // weight distribution, the reliability map and any anomalies the solver
 // reports.
 
-import { decodePNG, encodePNG } from '../core/png.js';
+import { readImage, writeImage, tensorToSlice, FFI_EXTENSION } from '../../packages/imageio/src/index.js';
 import { encodeWeightMap, encodeReliability, WEIGHT_PALETTE } from '../core/fuse.js';
 
 const $ = (sel) => document.querySelector(sel);
@@ -54,19 +54,30 @@ function status(text, kind = '') {
 
 // ---------------------------------------------------------------- image loads
 
+// Every image enters through the new imageio reader (signature-based dispatch,
+// not extension-based). The tensor is adapted to the engine's RGBA16 sRGB
+// slice contract; any unrepresentable content is reported via the status line
+// rather than silently flattened.
 async function fileToSlice(file) {
   const bytes = new Uint8Array(await file.arrayBuffer());
-  const img = await decodePNG(bytes);
-  const bitmap = await createImageBitmap(new Blob([bytes], { type: 'image/png' }));
+  const tensor = await readImage(bytes);
+  const adapted = tensorToSlice(tensor, {
+    allowLoss: true,
+    name: file.name.replace(/\.(png|ffi)$/i, ''),
+  });
+  const bitmap = await createImageBitmap(new Blob([bytes], { type: 'image/png' })).catch(() => null);
   return {
-    name: file.name.replace(/\.png$/i, ''),
-    width: img.width,
-    height: img.height,
-    rgba: img.data,
+    name: adapted.name,
+    width: adapted.width,
+    height: adapted.height,
+    rgba: adapted.rgba,
     bitmap,
     enabled: true,
     roi: [],
     reg: null,
+    losses: adapted.losses,
+    sourceKind: tensor.kind,
+    sourceFormat: tensor.metadata?.format ?? 'ffi',
   };
 }
 
@@ -74,7 +85,12 @@ async function addFiles(files) {
   const next = [];
   for (const f of files) {
     try {
-      next.push(await fileToSlice(f));
+      const slice = await fileToSlice(f);
+      if (slice.losses.length) {
+        status(`已导入 ${f.name}，含可表示性损失：${slice.losses.map((l) => l.kind).join('、')}（详见控制台）。`, '');
+        console.warn(`${f.name} import losses`, slice.losses);
+      }
+      next.push(slice);
     } catch (err) {
       status(`无法读取 ${f.name}: ${err.message}`, 'bad');
     }
@@ -229,6 +245,26 @@ function paletteHex(k) {
   return `rgb(${c[0]}, ${c[1]}, ${c[2]})`;
 }
 
+// FFI inputs have no browser-native decoder, so build an ImageBitmap from the
+// RGBA16 engine slice when the file itself could not be decoded as an image.
+async function ensureBitmap(slice) {
+  if (slice.bitmap) return slice.bitmap;
+  const canvas = document.createElement('canvas');
+  canvas.width = slice.width;
+  canvas.height = slice.height;
+  const ctx = canvas.getContext('2d');
+  const id = ctx.createImageData(slice.width, slice.height);
+  for (let i = 0; i < slice.width * slice.height; i++) {
+    id.data[i * 4] = slice.rgba[i * 4] >> 8;
+    id.data[i * 4 + 1] = slice.rgba[i * 4 + 1] >> 8;
+    id.data[i * 4 + 2] = slice.rgba[i * 4 + 2] >> 8;
+    id.data[i * 4 + 3] = 255;
+  }
+  ctx.putImageData(id, 0, 0);
+  slice.bitmap = await createImageBitmap(canvas);
+  return slice.bitmap;
+}
+
 function activeSlices() {
   return state.slices.map((s, k) => ({ s, k })).filter(({ s }) => s.enabled);
 }
@@ -264,9 +300,10 @@ function openRoiEditor(index) {
   let boxes = s.roi.map((b) => ({ ...b }));
   let drag = null;
 
-  const draw = () => {
+  const draw = async () => {
+    const bmp = await ensureBitmap(s);
     const ctx = canvas.getContext('2d');
-    ctx.drawImage(s.bitmap, 0, 0, canvas.width, canvas.height);
+    ctx.drawImage(bmp, 0, 0, canvas.width, canvas.height);
     ctx.fillStyle = 'rgba(0,0,0,0.55)';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.save();
@@ -283,7 +320,7 @@ function openRoiEditor(index) {
       ctx.beginPath();
       ctx.rect(x, y, w, h);
       ctx.clip();
-      ctx.drawImage(s.bitmap, 0, 0, canvas.width, canvas.height);
+      ctx.drawImage(bmp, 0, 0, canvas.width, canvas.height);
       ctx.restore();
       ctx.strokeStyle = '#4c9be8';
       ctx.lineWidth = 1.5;
@@ -615,6 +652,7 @@ const WARN_TITLES = {
   ghosting: '重影风险',
   registration: '配准置信度不足',
   'size-mismatch': '尺寸不一致',
+  'weight-collapse': '权重分布异常',
 };
 
 function renderWarnings(res) {
@@ -627,7 +665,7 @@ function renderWarnings(res) {
   for (const w of res.warnings) {
     const div = document.createElement('div');
     const bad = w.code === 'ghosting' || w.code === 'size-mismatch';
-    div.className = `warning${bad ? ' bad' : w.code === 'registration' ? ' info' : ''}`;
+    div.className = `warning${bad ? ' bad' : w.code === 'registration' || w.code === 'weight-collapse' ? ' info' : ''}`;
     div.innerHTML = `<div class="wtitle">${escapeHtml(WARN_TITLES[w.code] || w.code)}</div>
       <div>${escapeHtml(w.message)}</div>`;
     host.appendChild(div);
@@ -658,12 +696,26 @@ function renderRegistration(enabled) {
 
 async function exportFused() {
   if (!state.result) return;
-  const bitDepth = Number($('#opt-bitdepth').value) === 8 ? 8 : 16;
-  status(`准备 ${bitDepth} 位导出…`);
+  const choice = $('#opt-bitdepth').value;
   try {
-    const out = await exportViaWorker(bitDepth);
-    downloadBlob(new Blob([out], { type: 'image/png' }), `fused-${bitDepth}bit.png`);
-    status(`已导出 ${bitDepth} 位融合图（${state.result.w}×${state.result.h}）。`, 'ok');
+    if (choice === 'ffi') {
+      status('准备 FFI 浮点无损导出…');
+      const out = await exportViaWorker({ format: 'ffi' });
+      const info = out.exportInfo;
+      downloadBlob(new Blob([out.fusedBytes], { type: 'application/x-focus-fusion-image' }), `fused-f32${FFI_EXTENSION}`);
+      status(`已导出 FFI 浮点融合图（f32 线性光，范围 ${info.valueRange.min.toFixed(3)}..${info.valueRange.max.toFixed(3)}，无量化损失）。`, 'ok');
+      return;
+    }
+    const bitDepth = Number(choice) === 8 ? 8 : 16;
+    status(`准备 ${bitDepth} 位 PNG 导出…`);
+    const out = await exportViaWorker({ format: 'png', bitDepth });
+    if (out.exportInfo.losses.length) {
+      console.warn('PNG export losses', out.exportInfo.losses);
+      status(`已导出 ${bitDepth} 位融合图；存在 ${out.exportInfo.losses.length} 项已确认的表示损失（见控制台），未静默降位。`, '');
+    } else {
+      status(`已导出 ${bitDepth} 位融合图（${state.result.w}×${state.result.h}）。`, 'ok');
+    }
+    downloadBlob(new Blob([out.fusedBytes], { type: 'image/png' }), `fused-${bitDepth}bit.png`);
   } catch (err) {
     status(`导出失败：${err.message}`, 'bad');
   }
@@ -677,10 +729,11 @@ function downloadBlob(blob, name) {
   setTimeout(() => URL.revokeObjectURL(a.href), 5000);
 }
 
-async function exportViaWorker(bitDepth) {
+async function exportViaWorker(spec) {
   // The worker only keeps the preview, so a full-resolution export re-runs the
   // real pipeline (the honest path: the exported pixels are the computed ones,
-  // not an upscaled preview).
+  // not an upscaled preview). Bytes come from the imageio writer, not a
+  // separate ad-hoc encoder.
   const enabled = state.slices.map((s, k) => ({ s, k })).filter(({ s }) => s.enabled);
   const id = ++jobId;
   const inputs = enabled.map(({ s }) => ({
@@ -688,14 +741,17 @@ async function exportViaWorker(bitDepth) {
   }));
   const roi = enabled.map(({ s }) => (s.roi.length ? s.roi : null));
   const options = { registration: state.options.registration, exposureMatch: state.options.exposureMatch };
-  setProgress('导出中…');
+  setProgress(spec.format === 'ffi' ? '浮点导出中…' : '导出中…');
   try {
     const res = await new Promise((resolve, reject) => {
       pending.set(id, { resolve, reject });
-      worker.postMessage({ id, inputs, options, roi, excludedSlices: [], exportBitDepth: bitDepth });
+      worker.postMessage({
+        id, inputs, options, roi, excludedSlices: [],
+        exportFormat: spec.format, exportBitDepth: spec.bitDepth,
+      });
     });
-    if (!res.fusedPng) throw new Error('worker did not return an export');
-    return res.fusedPng;
+    if (!res.fusedBytes) throw new Error('worker did not return an export');
+    return res;
   } finally {
     setProgress('');
   }
@@ -712,10 +768,16 @@ async function exportSelection() {
   } else {
     rgba = encodeWeightMap(pv.weights, pv.width, pv.height, 'winner');
   }
-  const bytes = await encodePNG({
-    width: pv.width, height: pv.height, channels: 4, bitDepth: 8, data: rgba,
-  });
-  downloadBlob(new Blob([bytes], { type: 'image/png' }), 'selection.png');
+  const out = await writeImage(
+    {
+      width: pv.width, height: pv.height, channels: 4, kind: 'u8', data: rgba,
+      channelOrder: ['R', 'G', 'B', 'A'], valueRange: { min: 0, max: 255 },
+      transfer: 'srgb', metadata: { name: 'selection' },
+    },
+    'png',
+    { allowLoss: true },
+  );
+  downloadBlob(new Blob([out.bytes], { type: 'image/png' }), 'selection.png');
   status('已导出选择图。', 'ok');
 }
 
@@ -760,13 +822,13 @@ document.querySelectorAll('.tab').forEach((t) => {
 window.addEventListener('dragover', (e) => e.preventDefault());
 window.addEventListener('drop', (e) => {
   e.preventDefault();
-  const files = [...e.dataTransfer.files];
-  const png = files.filter((f) => /\.png$/i.test(f.name));
-  if (files.length && !png.length) {
-    status('请拖入 PNG 图片（其它格式请先导出为 PNG）。', 'bad');
+  const files = [...e.data.files];
+  const ok = files.filter((f) => /\.(png|ffi)$/i.test(f.name));
+  if (files.length && !ok.length) {
+    status('请拖入 PNG 或 FFI 图片（其它格式请先转换）。', 'bad');
     return;
   }
-  if (png.length) addFiles(png);
+  if (ok.length) addFiles(ok);
 });
 
 function escapeHtml(s) {

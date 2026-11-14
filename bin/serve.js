@@ -19,6 +19,7 @@ const MIME = {
   '.css': 'text/css; charset=utf-8',
   '.json': 'application/json',
   '.png': 'image/png',
+  '.ffi': 'application/x-focus-fusion-image',
   '.svg': 'image/svg+xml',
   '.ico': 'image/x-icon',
 };

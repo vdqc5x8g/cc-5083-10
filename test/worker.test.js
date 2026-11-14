@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { decodePNG } from '../src/core/png.js';
+import { readImage } from '../packages/imageio/src/index.js';
 import { makeChartStack } from './lib/fixtures.mjs';
 
 // The browser image-restoration window runs every fusion in this worker. Node
@@ -64,10 +65,15 @@ test('worker export path returns a real 16-bit PNG', async () => {
     id: 3, inputs: inputsOf(slices), options: {}, roi: null, excludedSlices: [], exportBitDepth: 16,
   });
   const m = messages.find((x) => x.msg.ok).msg;
-  assert.ok(m.fusedPng && m.fusedPng.length > 0);
-  const png = await decodePNG(new Uint8Array(m.fusedPng));
-  assert.equal(png.width, 120);
-  assert.equal(png.height, 90);
+  assert.ok(m.fusedBytes && m.fusedBytes.length > 0);
+  assert.equal(m.exportInfo.format, 'png');
+  // Reread through the new imageio reader (signature dispatch), not by name.
+  const tensor = await readImage(new Uint8Array(m.fusedBytes));
+  assert.equal(tensor.width, 120);
+  assert.equal(tensor.height, 90);
+  assert.equal(tensor.kind, 'u16');
+  assert.equal(tensor.metadata.sourceBitDepth, 16);
+  const png = await decodePNG(new Uint8Array(m.fusedBytes));
   assert.equal(png.bitDepth, 16);
   assert.equal(png.max, 65535);
   // Distinct low bytes => genuinely more than 8 bits of output.
